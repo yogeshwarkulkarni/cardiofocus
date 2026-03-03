@@ -1,0 +1,26 @@
+# Credentials and local config
+.env
+*.env.local
+
+# Reports (optional - remove if you want to commit reports)
+reports/
+*.report.json
+*.report.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,20 @@
+# CardioFocus Device Portal Automation - Dependencies
+# Python 3.9+ recommended
+
+# UI Automation
+selenium>=4.15.0
+webdriver-manager>=4.0.1
+
+# API & HTTP
+requests>=2.31.0
+
+# Configuration & environment
+python-dotenv>=1.0.0
+
+# Test runner and HTML report
+pytest>=7.0.0
+pytest-html>=4.0.0
+
+# Optional: Email notification for test results
+# Uncomment if using email reporting
+# secure-smtplib  # stdlib smtplib is sufficient for basic notification
