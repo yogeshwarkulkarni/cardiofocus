@@ -1,78 +1,29 @@
 """
 UI Automation for CardioFocus Device Portal.
-Uses Selenium to log in, navigate to device management, search for a device,
-and verify displayed status. Includes explicit waits and error handling.
+Uses Page Object Model (pages/) and Selenium: login -> device list -> search -> verify status.
 """
 
 import sys
 import warnings
 
-# Suppress urllib3/OpenSSL warning on macOS (Python built against LibreSSL)
 warnings.filterwarnings("ignore", message=".*OpenSSL 1.1.1.*", category=UserWarning)
 
 from datetime import datetime
 from typing import Optional, Tuple
 
 from selenium import webdriver
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    WebDriverException,
-)
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.remote.webelement import WebElement
+from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
 import config
-from reporter import StepResult, TestRunReport, format_console_report, write_report_file
-
-
-# Selectors for the portal (adjust for actual portal DOM - see README)
-SELECTORS = {
-    "login_url_path": "/login",
-    "username_input": "input[name='username'], #username, input[type='email']",
-    "password_input": "input[name='password'], #password",
-    "login_submit": "button[type='submit'], input[type='submit'], .login-button",
-    "device_management_link": "a[href*='device'], a[href*='devices'], nav a:contains('Devices')",
-    "device_management_url_path": "/devices",
-    "device_search_input": "input[placeholder*='Search'], input[name='search'], #device-search",
-    "device_search_button": "button:contains('Search'), .search-btn, button[type='submit']",
-    "device_status_cell": "td[data-status], .device-status, .status",
-    "device_row": "tr[data-device-id], table tbody tr",
-}
+from reporter import TestRunReport, format_console_report, write_report_file
+from pages.login_page import LoginPage
+from pages.devices_page import DevicesPage
 
 
 def _run_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-
-def _find_element(driver: webdriver.Chrome, by: By, value: str, timeout: int) -> Optional[WebElement]:
-    """Find element with explicit wait. Returns None on timeout."""
-    try:
-        return WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, value)))
-    except TimeoutException:
-        return None
-
-
-def _find_element_css(driver: webdriver.Chrome, css_selector: str, timeout: int) -> Optional[WebElement]:
-    try:
-        return WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, css_selector))
-        )
-    except TimeoutException:
-        return None
-
-
-def _try_selectors(driver: webdriver.Chrome, selectors: str, timeout: int) -> Optional[WebElement]:
-    """Try multiple CSS selectors (comma-separated); return first match."""
-    for sel in (s.strip() for s in selectors.split(",")):
-        el = _find_element_css(driver, sel, timeout=min(3, timeout))
-        if el is not None:
-            return el
-    return None
 
 
 def run_ui_tests(
@@ -85,8 +36,7 @@ def run_ui_tests(
     output_dir: Optional[str] = None,
 ) -> Tuple[TestRunReport, bool]:
     """
-    Execute UI test flow. Returns (report, success).
-    Parameters default to config module values.
+    Execute UI test flow using Page Objects. Returns (report, success).
     """
     base_url = base_url or config.PORTAL_BASE_URL
     username = username or config.PORTAL_USERNAME
@@ -96,12 +46,16 @@ def run_ui_tests(
     headless = headless if headless is not None else config.BROWSER_HEADLESS
     timeout = config.EXPLICIT_WAIT_TIMEOUT_SECONDS
 
-    report = TestRunReport(run_id=_run_id(), started_at=datetime.utcnow().isoformat() + "Z", test_name="UI Automation")
+    report = TestRunReport(
+        run_id=_run_id(),
+        started_at=datetime.utcnow().isoformat() + "Z",
+        test_name="UI Automation",
+    )
     driver: Optional[webdriver.Chrome] = None
 
     try:
-        # Step 1: Navigate to login page
-        login_url = f"{base_url.rstrip('/')}{SELECTORS['login_url_path']}"
+        # --- Step 1: Navigate to login page ---
+        login_url = f"{base_url.rstrip('/')}{LoginPage.URL_PATH}"
         try:
             options = webdriver.ChromeOptions()
             if headless:
@@ -119,89 +73,57 @@ def run_ui_tests(
             return report, False
 
         if not username or not password:
-            report.add_step("Login credentials", False, "Username or password not configured (set PORTAL_USERNAME, PORTAL_PASSWORD)")
+            report.add_step(
+                "Login credentials",
+                False,
+                "Username or password not configured (set PORTAL_USERNAME, PORTAL_PASSWORD)",
+            )
             report.set_finished(False, "Missing credentials")
             return report, False
 
-        # Step 2: Log in
-        user_el = _try_selectors(driver, SELECTORS["username_input"], timeout)
-        pass_el = _try_selectors(driver, SELECTORS["password_input"], timeout)
-        submit_el = _try_selectors(driver, SELECTORS["login_submit"], timeout)
+        # --- Step 2: Log in (Page Object) ---
+        login_page = LoginPage(driver, base_url, timeout)
+        user_el, pass_el, submit_el = login_page.get_login_elements()
 
         if not user_el or not pass_el or not submit_el:
             report.add_step(
                 "Login",
                 False,
-                "Login failed: could not find username, password, or submit elements. Check selectors for this portal.",
+                "Login failed: could not find username, password, or submit elements. Check selectors in pages/login_page.py.",
                 f"user_el={user_el is not None}, pass_el={pass_el is not None}, submit_el={submit_el is not None}",
             )
             report.set_finished(False, "Login elements not found")
             return report, False
 
-        user_el.clear()
-        user_el.send_keys(username)
-        pass_el.clear()
-        pass_el.send_keys(password)
-        submit_el.click()
+        login_page.login(username, password)
+        login_page.wait_until_left_login()
 
-        # Wait for navigation (either to dashboard or error)
-        WebDriverWait(driver, timeout).until(
-            lambda d: "login" not in d.current_url.lower() or "error" in d.page_source.lower()
-        )
-
-        if "login" in driver.current_url.lower() and "error" not in driver.page_source.lower():
-            # Still on login - might be wrong credentials
+        if login_page.is_still_on_login_page():
             report.add_step("Login", False, "Login failed: remained on login page (check credentials)")
             report.set_finished(False, "Login failure")
             return report, False
 
         report.add_step("Login", True, "Submitted credentials and left login page")
 
-        # Step 3: Navigate to device management
-        devices_url = f"{base_url.rstrip('/')}{SELECTORS['device_management_url_path']}"
-        driver.get(devices_url)
-        WebDriverWait(driver, timeout).until(EC.url_contains("device") if "device" in devices_url else lambda d: True)
-        report.add_step("Navigate to device management", True, f"Loaded {devices_url}")
+        # --- Step 3: Navigate to device management (Page Object) ---
+        devices_page = DevicesPage(driver, base_url, timeout)
+        devices_page.open()
+        report.add_step("Navigate to device management", True, f"Loaded {devices_page.get_url()}")
 
-        # Step 4: Search for device by ID
-        search_el = _try_selectors(driver, SELECTORS["device_search_input"], timeout)
+        # --- Step 4: Search for device (Page Object) ---
+        search_el = devices_page.get_search_input()
         if not search_el:
-            report.add_step(
-                "Search for device",
-                False,
-                "Device search input not found.",
-            )
+            report.add_step("Search for device", False, "Device search input not found.")
             report.set_finished(False, "Search UI not found")
             return report, False
 
-        search_el.clear()
-        search_el.send_keys(device_id)
-        search_btn = _try_selectors(driver, SELECTORS["device_search_button"], timeout)
-        if search_btn:
-            search_btn.click()
-        else:
-            from selenium.webdriver.common.keys import Keys
-            search_el.send_keys(Keys.RETURN)
-        WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, "table tbody tr, .device-list .device, [data-device-id]")))
+        devices_page.search_device(device_id)
         report.add_step("Search for device", True, f"Searched for device ID: {device_id}")
 
-        # Step 5: Verify device status on page
+        # --- Step 5: Verify device status (Page Object) ---
         try:
-            # Try to find row containing device_id and then status
-            rows = driver.find_elements(By.CSS_SELECTOR, SELECTORS["device_row"])
-            status_el = None
-            for row in rows:
-                if device_id in row.text:
-                    status_candidates = row.find_elements(By.CSS_SELECTOR, SELECTORS["device_status_cell"])
-                    if status_candidates:
-                        status_el = status_candidates[0]
-                        break
-                    # Fallback: first cell after device ID might be status in many tables
-                    cells = row.find_elements(By.TAG_NAME, "td")
-                    if len(cells) >= 2:
-                        status_el = cells[1]
-                        break
-            if status_el is None:
+            actual_status = devices_page.get_device_status_for(device_id)
+            if actual_status is None:
                 report.add_step(
                     "Verify device status (UI)",
                     False,
@@ -210,7 +132,6 @@ def run_ui_tests(
                 report.set_finished(False, "Device not found or status not visible")
                 return report, False
 
-            actual_status = status_el.text.strip()
             if actual_status != expected_status:
                 report.add_step(
                     "Verify device status (UI)",
@@ -221,7 +142,11 @@ def run_ui_tests(
                 report.set_finished(False, "Status mismatch")
                 return report, False
 
-            report.add_step("Verify device status (UI)", True, f"Displayed status '{actual_status}' matches expected '{expected_status}'")
+            report.add_step(
+                "Verify device status (UI)",
+                True,
+                f"Displayed status '{actual_status}' matches expected '{expected_status}'",
+            )
         except NoSuchElementException as e:
             report.add_step("Verify device status (UI)", False, "Could not find device or status element", str(e))
             report.set_finished(False, "Element not found")
@@ -252,7 +177,6 @@ def main() -> int:
     report_path = write_report_file(report, output_dir=reports_dir)
     print(f"Report written to: {report_path}")
 
-    # Optional email
     if config.REPORT_EMAIL_ENABLED and config.REPORT_EMAIL_TO and config.REPORT_EMAIL_FROM:
         from reporter import send_report_email
         if send_report_email(

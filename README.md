@@ -8,7 +8,7 @@ Automation scripts for validating core functionality of the CardioFocus device m
 
 | Deliverable | File | Description |
 |-------------|------|-------------|
-| UI automation | `ui_automation.py` | Selenium: login, device list, search by ID, status verification |
+| UI automation | `ui_automation.py`, `pages/` | Selenium + **Page Object Model**: login, device list, search, status verification |
 | API automation | `api_automation.py` | REST: auth, GET device by ID, status verification |
 | Test reporting | `reporter.py`, **pytest-html** | Console, JSON/text files, HTML report; optional email |
 | Pytest tests | `tests/test_ui.py`, `tests/test_api.py` | Pytest entry points for UI and API (pytest-html report) |
@@ -110,7 +110,7 @@ Reports: `reports/report_<run_id>.txt`, `reports/report_<run_id>.json` (script r
 ### Assumptions
 
 1. **Portal URL**: `https://portal.cardiofocus.com` (overridable via `PORTAL_BASE_URL` / `API_BASE_URL`).  
-2. **Login**: Form with username + password and a submit button; exact selectors may need to be updated for the real portal (see `ui_automation.py` `SELECTORS`).  
+2. **Login**: Form with username + password and a submit button; exact selectors may need to be updated for the real portal (see `pages/login_page.py`).  
 3. **Device management**: A page at `/devices` with search and a list/table of devices; device ID and status are visible in the DOM.  
 4. **REST API**:  
    - `GET /api/devices/{device_id}` returns JSON with at least a `status` field.  
@@ -122,7 +122,7 @@ Reports: `reports/report_<run_id>.txt`, `reports/report_<run_id>.json` (script r
 1. **Config**: Single `config.py` reading from `os.environ` and optional `.env` so that credentials stay out of code and can differ per environment.  
 2. **UI**:  
    - Explicit waits (and a short implicit wait) to avoid flakiness.  
-   - Multiple candidate CSS selectors per element so small DOM changes don’t break runs; selectors are centralized in `SELECTORS` for easy tuning.  
+   - Multiple candidate CSS selectors per element so small DOM changes don’t break runs; **Page Object Model**: selectors and actions live in `pages/login_page.py` and `pages/devices_page.py` for easy tuning.  
    - Clear error handling for “login failed” and “device not found / status not found,” with distinct report steps.  
 3. **API**:  
    - `requests.Session` for auth and connection reuse.  
@@ -176,7 +176,8 @@ cardiofocus-automation/
 ├── pytest.ini              # Pytest options (--html=reports/report.html)
 ├── config.py               # Configuration from env / .env
 ├── reporter.py             # Test reporting (console, file, email)
-├── ui_automation.py        # Selenium UI automation
+├── pages/                  # Page Object Model (base_page, login_page, devices_page)
+├── ui_automation.py        # Selenium UI automation (uses pages/)
 ├── api_automation.py       # REST API automation
 ├── run_all_tests.py        # Integrated UI + API workflow (entry point)
 ├── mock_api_server.py      # Optional local mock for API (stdlib only)
@@ -191,7 +192,7 @@ cardiofocus-automation/
 
 ## Updating for your real portal
 
-1. **UI**: In `ui_automation.py`, update the `SELECTORS` dict to match with actual login form, device list, and search controls (IDs, names, or CSS).  
+1. **UI**: In `pages/login_page.py` and `pages/devices_page.py`, update the CSS selector constants to match your login form, device list, and search controls.  
 2. **URLs**: Set `PORTAL_BASE_URL` and `API_BASE_URL` in `.env` if different from `https://portal.cardiofocus.com`.  
 3. **API auth**: If your API uses a different auth scheme (e.g. custom header), adjust `get_api_session()` in `api_automation.py` and set the corresponding env vars.
 
