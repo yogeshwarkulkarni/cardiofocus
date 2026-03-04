@@ -99,8 +99,8 @@ Reports: `reports/report_<run_id>.txt`, `reports/report_<run_id>.json` (script r
 - **Console**: Pass/fail per step with a short summary.  
 - **Files**:  
   - `reports/report_<run_id>.txt` – human-readable (script runs).  
-  - `reports/report_<run_id>.json` – machine-readable (script runs).  
-  - **`reports/report.html`** – pytest-html report when you run `pytest` (open in browser).  
+  - `reports/report_<run_id>.json` – machine-readable (script runs). 
+  - **`reports/report.html`** – pytest-html report when you run `pytest` (open in browser).  Sample report : [report.html](https://github.com/user-attachments/files/25748442/report.html)
 - **Email** (optional): Set `REPORT_EMAIL_ENABLED=true`, `REPORT_EMAIL_TO`, `REPORT_EMAIL_FROM`, and SMTP settings in `.env`; the scripts will send the same report by email when enabled.
 
 ---
